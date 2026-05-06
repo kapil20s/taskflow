@@ -40,13 +40,17 @@ function AppContent() {
     setProjects(prev => [project, ...prev]);
   };
 
+  const handleProjectUpdated = (project) => {
+    setProjects(prev => prev.map(p => (p.id === project.id ? { ...p, ...project } : p)));
+  };
+
   const renderMain = () => {
     if (view === 'dashboard') return <Dashboard setView={setView}/>;
     if (view === 'projects') return <ProjectsPage projects={projects} onProjectCreated={handleProjectCreated} setView={setView} loading={projectsLoading}/>;
     if (view === 'my-tasks') return <MyTasksPage setView={setView}/>;
     if (view.startsWith('project-')) {
       const projectId = view.replace('project-', '');
-      return <ProjectDetail key={projectId} projectId={projectId} setView={setView}/>;
+      return <ProjectDetail key={projectId} projectId={projectId} setView={setView} onProjectUpdated={handleProjectUpdated}/>;
     }
     return <Dashboard setView={setView}/>;
   };

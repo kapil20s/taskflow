@@ -65,6 +65,41 @@ router.get('/:projectId', authenticate, requireProjectMember, async (req, res) =
   }
 });
 
+// PUT /api/projects/:projectId - update project (admin only)
+router.put('/:projectId', authenticate, requireProjectAdmin, async (req, res) => {
+  try {
+    const { name, description } = req.body;
+    const trimmedName = String(name || '').trim();
+    const trimmedDescription = String(description || '').trim();
+
+    if (!trimmedName) {
+      return res.status(400).json({ error: 'Project name is required' });
+    }
+
+    await db.execute({
+      sql: 'UPDATE projects SET name = ?, description = ? WHERE id = ?',
+      args: [trimmedName, trimmedDescription, req.params.projectId],
+    });
+
+    const updatedProject = await db.execute({
+      sql: `SELECT p.*, u.name as admin_name
+            FROM projects p
+            JOIN users u ON u.id = p.admin_id
+            WHERE p.id = ?`,
+      args: [req.params.projectId],
+    });
+
+    if (updatedProject.rows.length === 0) {
+      return res.status(404).json({ error: 'Project not found' });
+    }
+
+    return res.json({ project: updatedProject.rows[0] });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ error: 'Server error' });
+  }
+});
+
 // POST /api/projects/:projectId/members - add member (admin only)
 router.post('/:projectId/members', authenticate, requireProjectAdmin, async (req, res) => {
   try {

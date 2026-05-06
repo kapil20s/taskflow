@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { Pencil } from 'lucide-react';
 import api from './api';
 import { useAuth } from './AuthContext';
 import TaskModal from './TaskModal';
@@ -12,7 +13,7 @@ function formatDate(d) {
   return new Date(d + 'T00:00:00').toLocaleDateString('en-IN', { day: 'numeric', month: 'short' });
 }
 
-export default function ProjectDetail({ projectId, setView }) {
+export default function ProjectDetail({ projectId, setView, onProjectUpdated }) {
   const { user } = useAuth();
   const [project, setProject] = useState(null);
   const [members, setMembers] = useState([]);
@@ -29,8 +30,19 @@ export default function ProjectDetail({ projectId, setView }) {
   const [taskError, setTaskError] = useState('');
   const [filterStatus, setFilterStatus] = useState('');
   const [filterAssignee, setFilterAssignee] = useState('');
+  const [showEditProject, setShowEditProject] = useState(false);
+  const [editForm, setEditForm] = useState({ name: '', description: '' });
+  const [editingProject, setEditingProject] = useState(false);
+  const [editProjectError, setEditProjectError] = useState('');
+  const [toast, setToast] = useState(null);
 
   const isAdmin = project?.admin_id === user?.id;
+
+  useEffect(() => {
+    if (!toast) return;
+    const timer = setTimeout(() => setToast(null), 3000);
+    return () => clearTimeout(timer);
+  }, [toast]);
 
   useEffect(() => {
     setLoading(true);
@@ -97,6 +109,46 @@ export default function ProjectDetail({ projectId, setView }) {
     setSelectedTask(null);
   };
 
+  const openEditProject = () => {
+    setEditProjectError('');
+    setEditForm({
+      name: project?.name || '',
+      description: project?.description || '',
+    });
+    setShowEditProject(true);
+  };
+
+  const saveProjectChanges = async (e) => {
+    e.preventDefault();
+    const trimmedName = editForm.name.trim();
+
+    if (!trimmedName) {
+      setEditProjectError('Project name cannot be empty');
+      return;
+    }
+
+    setEditingProject(true);
+    setEditProjectError('');
+
+    try {
+      const response = await api.put(`/projects/${projectId}`, {
+        name: trimmedName,
+        description: editForm.description.trim(),
+      });
+
+      setProject(response.data.project);
+      onProjectUpdated?.(response.data.project);
+      setShowEditProject(false);
+      setToast({ type: 'success', message: 'Project updated successfully' });
+    } catch (err) {
+      const errorMsg = err.response?.data?.error || 'Failed to update project';
+      setEditProjectError(errorMsg);
+      setToast({ type: 'error', message: errorMsg });
+    } finally {
+      setEditingProject(false);
+    }
+  };
+
   const filteredTasks = tasks.filter(t => {
     if (filterStatus && t.status !== filterStatus) return false;
     if (filterAssignee && t.assignee_id !== filterAssignee) return false;
@@ -119,7 +171,21 @@ export default function ProjectDetail({ projectId, setView }) {
             <span>›</span>
             <span style={{color:'var(--text2)'}}>{project.name}</span>
           </div>
-          <div className="page-title">{project.name}</div>
+          <div style={{display:'flex',alignItems:'center',gap:10}}>
+            <div className="page-title">{project.name}</div>
+            {isAdmin && (
+              <button
+                className="project-edit-btn"
+                onClick={openEditProject}
+                aria-label="Edit Project"
+                title="Edit Project"
+                type="button"
+              >
+                <Pencil size={14} />
+                <span className="project-edit-tooltip">Edit Project</span>
+              </button>
+            )}
+          </div>
           {project.description && <div className="page-subtitle">{project.description}</div>}
           <div style={{display:'flex',alignItems:'center',gap:16,marginTop:10}}>
             <div style={{display:'flex',alignItems:'center',gap:6}}>
@@ -381,6 +447,63 @@ export default function ProjectDetail({ projectId, setView }) {
               </div>
             </form>
           </div>
+        </div>
+      )}
+
+      {/* Edit project modal */}
+      {showEditProject && (
+        <div className="modal-overlay" onClick={e => e.target===e.currentTarget && setShowEditProject(false)}>
+          <div className="modal">
+            <div className="modal-header">
+              <div className="modal-title">Edit Project</div>
+              <button className="modal-close" onClick={() => setShowEditProject(false)}>✕</button>
+            </div>
+            {editProjectError && <div className="error-msg">{editProjectError}</div>}
+            <form onSubmit={saveProjectChanges}>
+              <div className="form-group">
+                <label className="form-label">Project Name *</label>
+                <input
+                  className="form-input"
+                  placeholder="Project name"
+                  value={editForm.name}
+                  onChange={e => setEditForm({ ...editForm, name: e.target.value })}
+                  required
+                  autoFocus
+                />
+              </div>
+              <div className="form-group">
+                <label className="form-label">Project Description</label>
+                <textarea
+                  className="form-input"
+                  placeholder="Project description..."
+                  value={editForm.description}
+                  onChange={e => setEditForm({ ...editForm, description: e.target.value })}
+                  rows={4}
+                />
+              </div>
+              <div className="modal-actions">
+                <button type="button" className="btn btn-ghost" onClick={() => setShowEditProject(false)} disabled={editingProject}>
+                  Cancel
+                </button>
+                <button type="submit" className="btn btn-primary" disabled={editingProject}>
+                  {editingProject ? (
+                    <span className="btn-loading">
+                      <span className="spinner spinner-inline" aria-hidden />
+                      Saving...
+                    </span>
+                  ) : (
+                    'Save Changes'
+                  )}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {toast && (
+        <div className={`toast toast-${toast.type}`} role="status" aria-live="polite">
+          {toast.message}
         </div>
       )}
     </>
