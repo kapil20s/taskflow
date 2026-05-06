@@ -1,9 +1,34 @@
 const { createClient } = require('@libsql/client');
 const path = require('path');
+const bcrypt = require('bcryptjs');
+const { v4: uuidv4 } = require('uuid');
 
 const db = createClient({
   url: process.env.DATABASE_URL || `file:${path.join(__dirname, 'taskflow.db')}`,
 });
+
+const DEMO_EMAIL = 'demo@taskflow.app';
+const DEMO_PASSWORD = 'demo123';
+const DEMO_NAME = 'TaskFlow Demo';
+
+async function ensureDemoUser() {
+  const normalizedEmail = DEMO_EMAIL.toLowerCase().trim();
+  const existing = await db.execute({
+    sql: 'SELECT id FROM users WHERE email = ?',
+    args: [normalizedEmail],
+  });
+
+  if (existing.rows.length > 0) {
+    return;
+  }
+
+  const hashedPassword = await bcrypt.hash(DEMO_PASSWORD, 12);
+  await db.execute({
+    sql: 'INSERT INTO users (id, name, email, password) VALUES (?, ?, ?, ?)',
+    args: [uuidv4(), DEMO_NAME, normalizedEmail, hashedPassword],
+  });
+  console.log(`[auth] demo user created: ${normalizedEmail}`);
+}
 
 async function initDB() {
   await db.executeMultiple(`
@@ -51,6 +76,7 @@ async function initDB() {
       FOREIGN KEY (created_by) REFERENCES users(id)
     );
   `);
+  await ensureDemoUser();
   console.log('Database initialized');
 }
 

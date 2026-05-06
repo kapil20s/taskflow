@@ -22,7 +22,10 @@ export function AuthProvider({ children }) {
   }, []);
 
   const login = async (email, password) => {
-    const r = await api.post('/auth/login', { email, password });
+    const r = await api.post('/auth/login', {
+      email: email?.toLowerCase().trim(),
+      password,
+    });
     localStorage.setItem('token', r.data.token);
     localStorage.setItem('user', JSON.stringify(r.data.user));
     setUser(r.data.user);
@@ -30,7 +33,11 @@ export function AuthProvider({ children }) {
   };
 
   const signup = async (name, email, password) => {
-    const r = await api.post('/auth/signup', { name, email, password });
+    const r = await api.post('/auth/signup', {
+      name: name?.trim(),
+      email: email?.toLowerCase().trim(),
+      password,
+    });
     localStorage.setItem('token', r.data.token);
     localStorage.setItem('user', JSON.stringify(r.data.user));
     setUser(r.data.user);
