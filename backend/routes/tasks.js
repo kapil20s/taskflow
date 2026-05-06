@@ -4,6 +4,20 @@ const { db } = require('../db');
 const { authenticate, requireProjectMember } = require('../middleware/auth');
 
 const router = express.Router({ mergeParams: true });
+const STATUS_ALIASES = {
+  'to do': 'todo',
+  todo: 'todo',
+  'in progress': 'in_progress',
+  in_progress: 'in_progress',
+  inprogress: 'in_progress',
+  done: 'done',
+};
+
+function normalizeStatus(value) {
+  if (value === undefined || value === null) return value;
+  const normalized = STATUS_ALIASES[String(value).trim().toLowerCase()];
+  return normalized || null;
+}
 
 // GET /api/projects/:projectId/tasks
 router.get('/', authenticate, requireProjectMember, async (req, res) => {
@@ -83,10 +97,24 @@ router.patch('/:taskId', authenticate, requireProjectMember, async (req, res) =>
     }
 
     const { title, description, due_date, priority, status, assignee_id } = req.body;
+    const normalizedStatus = normalizeStatus(status);
     const validStatuses = ['todo', 'in_progress', 'done'];
     const validPriorities = ['low', 'medium', 'high'];
 
-    if (status && !validStatuses.includes(status)) return res.status(400).json({ error: 'Invalid status' });
+    console.log('[tasks.patch] request', {
+      projectId: req.params.projectId,
+      taskId: req.params.taskId,
+      userId: req.user.id,
+      status,
+      normalizedStatus,
+    });
+
+    if (status !== undefined && !normalizedStatus) {
+      return res.status(400).json({ error: 'Invalid status. Use todo, in_progress, or done.' });
+    }
+    if (normalizedStatus && !validStatuses.includes(normalizedStatus)) {
+      return res.status(400).json({ error: 'Invalid status. Use todo, in_progress, or done.' });
+    }
     if (priority && !req.isAdmin) return res.status(403).json({ error: 'Only admins can change priority' });
     if (priority && !validPriorities.includes(priority)) return res.status(400).json({ error: 'Invalid priority' });
     if (assignee_id && !req.isAdmin) return res.status(403).json({ error: 'Only admins can reassign tasks' });
@@ -96,7 +124,7 @@ router.patch('/:taskId', authenticate, requireProjectMember, async (req, res) =>
       description: req.isAdmin && description !== undefined ? description : currentTask.description,
       due_date: req.isAdmin && due_date !== undefined ? due_date : currentTask.due_date,
       priority: req.isAdmin && priority ? priority : currentTask.priority,
-      status: status || currentTask.status,
+      status: normalizedStatus || currentTask.status,
       assignee_id: req.isAdmin && assignee_id !== undefined ? assignee_id : currentTask.assignee_id,
     };
 
@@ -109,6 +137,11 @@ router.patch('/:taskId', authenticate, requireProjectMember, async (req, res) =>
       sql: `SELECT t.*, u.name as assignee_name, u2.name as creator_name FROM tasks t
             LEFT JOIN users u ON u.id = t.assignee_id JOIN users u2 ON u2.id = t.created_by WHERE t.id = ?`,
       args: [req.params.taskId],
+    });
+    console.log('[tasks.patch] success', {
+      taskId: req.params.taskId,
+      previousStatus: currentTask.status,
+      updatedStatus: updated.rows[0]?.status,
     });
     res.json({ task: updated.rows[0] });
   } catch (err) {

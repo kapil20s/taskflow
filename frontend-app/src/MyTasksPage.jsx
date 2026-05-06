@@ -21,15 +21,38 @@ export default function MyTasksPage({ setView }) {
 
   const myTasks = (data?.myTasks || []).filter(t => !filterStatus || t.status === filterStatus);
 
+  const getStatusError = (err) => {
+    const statusCode = err.response?.status;
+    const serverMessage = err.response?.data?.error;
+    if (!err.response) return 'Cannot reach server. Check API URL/CORS/backend.';
+    if (statusCode === 401) return 'Unauthorized. Please log in again.';
+    if (statusCode === 403) return serverMessage || 'You are not allowed to update this task.';
+    if (statusCode >= 500) return serverMessage || 'Server error while updating task.';
+    return serverMessage || `Failed to update task (HTTP ${statusCode}).`;
+  };
+
   const updateStatus = async (task, newStatus) => {
     try {
-      await api.patch(`/projects/${task.project_id}/tasks/${task.id}`, { status: newStatus });
+      const endpoint = `/projects/${task.project_id}/tasks/${task.id}`;
+      const payload = { status: newStatus };
+      console.log('[MyTasks] status update request', { endpoint, payload, taskId: task.id });
+      const response = await api.patch(endpoint, payload);
+      console.log('[MyTasks] status update response', {
+        status: response.status,
+        taskId: response.data?.task?.id,
+        updatedStatus: response.data?.task?.status,
+      });
       setData(prev => ({
         ...prev,
-        myTasks: prev.myTasks.map(t => t.id === task.id ? {...t, status: newStatus} : t)
+        myTasks: prev.myTasks.map(t => t.id === task.id ? { ...t, ...response.data.task } : t)
       }));
     } catch (err) {
-      alert(err.response?.data?.error || 'Failed to update');
+      console.error('[MyTasks] status update failed', {
+        statusCode: err.response?.status,
+        response: err.response?.data,
+        message: err.message,
+      });
+      alert(getStatusError(err));
     }
   };
 
