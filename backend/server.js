@@ -23,7 +23,7 @@ const defaultDevOrigins = [
   'http://127.0.0.1:5174',
 ];
 
-const allowedOrigins = new Set([...defaultDevOrigins, ...configuredOrigins]);
+const allowedOrigins = new Set(["https://task-flows-production.up.railway.app"]);
 
 const corsOptions = {
   origin(origin, callback) {
