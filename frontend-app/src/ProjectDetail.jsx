@@ -1,0 +1,388 @@
+import { useState, useEffect } from 'react';
+import api from './api';
+import { useAuth } from './AuthContext';
+import TaskModal from './TaskModal';
+
+const initials = (name) => name ? name.split(' ').map(n=>n[0]).join('').toUpperCase().slice(0,2) : '?';
+
+const PRIORITY_CLASSES = { high: 'priority-high', medium: 'priority-medium', low: 'priority-low' };
+
+function formatDate(d) {
+  if (!d) return '';
+  return new Date(d + 'T00:00:00').toLocaleDateString('en-IN', { day: 'numeric', month: 'short' });
+}
+
+export default function ProjectDetail({ projectId, setView }) {
+  const { user } = useAuth();
+  const [project, setProject] = useState(null);
+  const [members, setMembers] = useState([]);
+  const [tasks, setTasks] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [tab, setTab] = useState('board');
+  const [selectedTask, setSelectedTask] = useState(null);
+  const [showNewTask, setShowNewTask] = useState(false);
+  const [showAddMember, setShowAddMember] = useState(false);
+  const [newMemberEmail, setNewMemberEmail] = useState('');
+  const [addMemberError, setAddMemberError] = useState('');
+  const [taskForm, setTaskForm] = useState({ title:'', description:'', due_date:'', priority:'medium', assignee_id:'' });
+  const [creatingTask, setCreatingTask] = useState(false);
+  const [taskError, setTaskError] = useState('');
+  const [filterStatus, setFilterStatus] = useState('');
+  const [filterAssignee, setFilterAssignee] = useState('');
+
+  const isAdmin = project?.admin_id === user?.id;
+
+  useEffect(() => {
+    setLoading(true);
+    Promise.all([
+      api.get(`/projects/${projectId}`),
+      api.get(`/projects/${projectId}/tasks`),
+    ]).then(([pd, td]) => {
+      setProject(pd.data.project);
+      setMembers(pd.data.members);
+      setTasks(td.data.tasks);
+    }).catch(err => {
+      if (err.response?.status === 403) setView('projects');
+    }).finally(() => setLoading(false));
+  }, [projectId]);
+
+  const createTask = async (e) => {
+    e.preventDefault();
+    if (!taskForm.title.trim()) return;
+    setCreatingTask(true);
+    setTaskError('');
+    try {
+      const payload = { ...taskForm, assignee_id: taskForm.assignee_id || undefined, due_date: taskForm.due_date || undefined };
+      const r = await api.post(`/projects/${projectId}/tasks`, payload);
+      setTasks(prev => [...prev, r.data.task]);
+      setShowNewTask(false);
+      setTaskForm({ title:'', description:'', due_date:'', priority:'medium', assignee_id:'' });
+    } catch (err) {
+      setTaskError(err.response?.data?.error || 'Failed to create task');
+    } finally {
+      setCreatingTask(false);
+    }
+  };
+
+  const addMember = async (e) => {
+    e.preventDefault();
+    setAddMemberError('');
+    try {
+      const r = await api.post(`/projects/${projectId}/members`, { email: newMemberEmail });
+      setMembers(prev => [...prev, r.data.member]);
+      setNewMemberEmail('');
+      setShowAddMember(false);
+    } catch (err) {
+      setAddMemberError(err.response?.data?.error || 'Failed to add member');
+    }
+  };
+
+  const removeMember = async (uid) => {
+    if (!confirm('Remove this member?')) return;
+    try {
+      await api.delete(`/projects/${projectId}/members/${uid}`);
+      setMembers(prev => prev.filter(m => m.id !== uid));
+    } catch (err) {
+      alert(err.response?.data?.error || 'Failed to remove member');
+    }
+  };
+
+  const updateTask = (updated) => {
+    setTasks(prev => prev.map(t => t.id === updated.id ? updated : t));
+    setSelectedTask(updated);
+  };
+
+  const deleteTask = (id) => {
+    setTasks(prev => prev.filter(t => t.id !== id));
+    setSelectedTask(null);
+  };
+
+  const filteredTasks = tasks.filter(t => {
+    if (filterStatus && t.status !== filterStatus) return false;
+    if (filterAssignee && t.assignee_id !== filterAssignee) return false;
+    return true;
+  });
+
+  const byStatus = (s) => filteredTasks.filter(t => t.status === s);
+  const done = byStatus('done');
+  const pct = tasks.length ? Math.round((tasks.filter(t=>t.status==='done').length / tasks.length) * 100) : 0;
+
+  if (loading) return <div className="loading"><div className="spinner"/></div>;
+  if (!project) return null;
+
+  return (
+    <>
+      <div className="page-header">
+        <div>
+          <div className="breadcrumb">
+            <button onClick={() => setView('projects')}>Projects</button>
+            <span>›</span>
+            <span style={{color:'var(--text2)'}}>{project.name}</span>
+          </div>
+          <div className="page-title">{project.name}</div>
+          {project.description && <div className="page-subtitle">{project.description}</div>}
+          <div style={{display:'flex',alignItems:'center',gap:16,marginTop:10}}>
+            <div style={{display:'flex',alignItems:'center',gap:6}}>
+              {members.slice(0,5).map(m => (
+                <div key={m.id} className="avatar avatar-sm" title={m.name}>{initials(m.name)}</div>
+              ))}
+              {members.length > 5 && <span style={{fontSize:12,color:'var(--text3)'}}>+{members.length-5}</span>}
+            </div>
+            <span style={{fontSize:13,color:'var(--text2)'}}>{tasks.length} tasks · {pct}% done</span>
+          </div>
+        </div>
+        <div style={{display:'flex',gap:10}}>
+          {isAdmin && <button className="btn btn-ghost btn-sm" onClick={() => setShowAddMember(true)}>+ Member</button>}
+          {isAdmin && <button className="btn btn-primary btn-sm" onClick={() => setShowNewTask(true)}>+ Task</button>}
+        </div>
+      </div>
+
+      <div className="page-body">
+        {/* Progress */}
+        <div style={{marginBottom:20}}>
+          <div className="progress-bar" style={{height:8}}>
+            <div className="progress-fill" style={{width:`${pct}%`}}/>
+          </div>
+        </div>
+
+        {/* Tabs */}
+        <div style={{display:'flex',gap:4,marginBottom:20,borderBottom:'1px solid var(--border)',paddingBottom:1}}>
+          {['board','list','members'].map(t => (
+            <button key={t} onClick={() => setTab(t)}
+              style={{padding:'8px 16px',border:'none',background:'none',cursor:'pointer',fontSize:13,fontWeight:500,
+                color: tab===t ? 'var(--accent)' : 'var(--text2)',
+                borderBottom: tab===t ? '2px solid var(--accent)' : '2px solid transparent',
+                textTransform:'capitalize',transition:'all 0.2s'
+              }}>{t === 'board' ? '📋 Board' : t === 'list' ? '📄 List' : '👥 Members'}</button>
+          ))}
+        </div>
+
+        {/* Filter bar */}
+        {(tab === 'board' || tab === 'list') && (
+          <div className="filter-bar">
+            <select className="form-input" style={{width:'auto',fontSize:13,padding:'7px 12px'}} value={filterStatus} onChange={e => setFilterStatus(e.target.value)}>
+              <option value="">All Statuses</option>
+              <option value="todo">To Do</option>
+              <option value="in_progress">In Progress</option>
+              <option value="done">Done</option>
+            </select>
+            <select className="form-input" style={{width:'auto',fontSize:13,padding:'7px 12px'}} value={filterAssignee} onChange={e => setFilterAssignee(e.target.value)}>
+              <option value="">All Assignees</option>
+              {members.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
+            </select>
+            {(filterStatus || filterAssignee) && (
+              <button className="btn btn-ghost btn-sm" onClick={() => { setFilterStatus(''); setFilterAssignee(''); }}>Clear</button>
+            )}
+          </div>
+        )}
+
+        {/* Board */}
+        {tab === 'board' && (
+          <div className="board-columns">
+            {[
+              {key:'todo', label:'To Do', cls:'col-todo'},
+              {key:'in_progress', label:'In Progress', cls:'col-inprogress'},
+              {key:'done', label:'Done', cls:'col-done'},
+            ].map(col => (
+              <div key={col.key} className={`board-column ${col.cls}`}>
+                <div className="column-header">
+                  <div className="column-title">
+                    <div className="column-dot"/>
+                    {col.label}
+                  </div>
+                  <div className="column-count">{byStatus(col.key).length}</div>
+                </div>
+                <div className="column-body">
+                  {byStatus(col.key).length === 0 ? (
+                    <div style={{textAlign:'center',padding:'20px 10px',color:'var(--text3)',fontSize:12}}>No tasks</div>
+                  ) : byStatus(col.key).map(task => {
+                    const isOverdue = task.due_date && new Date(task.due_date) < new Date() && task.status !== 'done';
+                    return (
+                      <div key={task.id} className="task-card" onClick={() => setSelectedTask(task)}>
+                        <div className="task-title">{task.title}</div>
+                        {task.description && <div className="task-desc">{task.description}</div>}
+                        <div className="task-footer">
+                          <span className={`priority-badge ${PRIORITY_CLASSES[task.priority]}`}>{task.priority}</span>
+                          <div style={{display:'flex',gap:8,alignItems:'center'}}>
+                            {task.due_date && <span className={`due-date ${isOverdue?'overdue':''}`}>📅 {formatDate(task.due_date)}</span>}
+                            {task.assignee_name && (
+                              <div className="assignee-chip">
+                                <div className="avatar" style={{width:20,height:20,fontSize:9}}>{initials(task.assignee_name)}</div>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* List view */}
+        {tab === 'list' && (
+          <div className="card" style={{padding:0,overflow:'hidden'}}>
+            {filteredTasks.length === 0 ? (
+              <div className="empty-state" style={{padding:'40px 20px'}}>
+                <div className="empty-icon">✅</div>
+                <div className="empty-title">No tasks found</div>
+              </div>
+            ) : (
+              <table>
+                <thead>
+                  <tr>
+                    <th>Title</th>
+                    <th>Status</th>
+                    <th>Priority</th>
+                    <th>Assignee</th>
+                    <th>Due Date</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredTasks.map(t => {
+                    const isOverdue = t.due_date && new Date(t.due_date) < new Date() && t.status !== 'done';
+                    return (
+                      <tr key={t.id} style={{cursor:'pointer'}} onClick={() => setSelectedTask(t)}>
+                        <td style={{color:'var(--text)',fontWeight:500}}>{t.title}</td>
+                        <td>
+                          <span style={{fontSize:11,fontWeight:600,padding:'2px 8px',borderRadius:100,
+                            background: t.status==='done'?'rgba(34,197,94,0.15)':t.status==='in_progress'?'rgba(245,158,11,0.15)':'rgba(90,90,122,0.15)',
+                            color: t.status==='done'?'var(--green)':t.status==='in_progress'?'var(--yellow)':'var(--text3)'
+                          }}>{t.status==='in_progress'?'In Progress':t.status==='done'?'Done':'To Do'}</span>
+                        </td>
+                        <td><span className={`priority-badge ${PRIORITY_CLASSES[t.priority]}`}>{t.priority}</span></td>
+                        <td>
+                          {t.assignee_name ? (
+                            <div style={{display:'flex',alignItems:'center',gap:6}}>
+                              <div className="avatar" style={{width:22,height:22,fontSize:9}}>{initials(t.assignee_name)}</div>
+                              {t.assignee_name}
+                            </div>
+                          ) : <span style={{color:'var(--text3)'}}>—</span>}
+                        </td>
+                        <td style={{color: isOverdue ? 'var(--red)' : 'var(--text2)'}}>
+                          {t.due_date ? formatDate(t.due_date) : '—'}
+                          {isOverdue && ' ⚠'}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            )}
+          </div>
+        )}
+
+        {/* Members */}
+        {tab === 'members' && (
+          <div className="card">
+            <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:16}}>
+              <span style={{fontWeight:600}}>{members.length} members</span>
+              {isAdmin && <button className="btn btn-primary btn-sm" onClick={() => setShowAddMember(true)}>+ Add Member</button>}
+            </div>
+            {members.map(m => (
+              <div key={m.id} className="member-row">
+                <div className="member-info">
+                  <div className="avatar">{initials(m.name)}</div>
+                  <div>
+                    <div style={{fontSize:14,fontWeight:500,color:'var(--text)'}}>{m.name} {m.id===user?.id && <span style={{fontSize:11,color:'var(--text3)'}}>(you)</span>}</div>
+                    <div style={{fontSize:12,color:'var(--text3)'}}>{m.email}</div>
+                  </div>
+                </div>
+                <div style={{display:'flex',alignItems:'center',gap:10}}>
+                  <span className={`badge ${m.id===project.admin_id?'badge-admin':'badge-member'}`}>{m.id===project.admin_id?'Admin':'Member'}</span>
+                  {isAdmin && m.id !== user?.id && m.id !== project.admin_id && (
+                    <button className="btn btn-danger btn-sm" onClick={() => removeMember(m.id)}>Remove</button>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Task detail modal */}
+      {selectedTask && (
+        <TaskModal task={selectedTask} projectId={projectId} members={members} isAdmin={isAdmin}
+          onClose={() => setSelectedTask(null)} onUpdated={updateTask} onDeleted={deleteTask}/>
+      )}
+
+      {/* New task modal */}
+      {showNewTask && (
+        <div className="modal-overlay" onClick={e => e.target===e.currentTarget && setShowNewTask(false)}>
+          <div className="modal">
+            <div className="modal-header">
+              <div className="modal-title">New Task</div>
+              <button className="modal-close" onClick={() => setShowNewTask(false)}>✕</button>
+            </div>
+            {taskError && <div className="error-msg">{taskError}</div>}
+            <form onSubmit={createTask}>
+              <div className="form-group">
+                <label className="form-label">Title *</label>
+                <input className="form-input" placeholder="Task title" value={taskForm.title}
+                  onChange={e => setTaskForm({...taskForm, title: e.target.value})} required autoFocus/>
+              </div>
+              <div className="form-group">
+                <label className="form-label">Description</label>
+                <textarea className="form-input" placeholder="Optional description..." value={taskForm.description}
+                  onChange={e => setTaskForm({...taskForm, description: e.target.value})} rows={3}/>
+              </div>
+              <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12}}>
+                <div className="form-group">
+                  <label className="form-label">Priority</label>
+                  <select className="form-input" value={taskForm.priority} onChange={e => setTaskForm({...taskForm, priority: e.target.value})}>
+                    <option value="low">Low</option>
+                    <option value="medium">Medium</option>
+                    <option value="high">High</option>
+                  </select>
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Due Date</label>
+                  <input className="form-input" type="date" value={taskForm.due_date}
+                    onChange={e => setTaskForm({...taskForm, due_date: e.target.value})}/>
+                </div>
+              </div>
+              <div className="form-group">
+                <label className="form-label">Assignee</label>
+                <select className="form-input" value={taskForm.assignee_id} onChange={e => setTaskForm({...taskForm, assignee_id: e.target.value})}>
+                  <option value="">Unassigned</option>
+                  {members.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
+                </select>
+              </div>
+              <div className="modal-actions">
+                <button type="button" className="btn btn-ghost" onClick={() => setShowNewTask(false)}>Cancel</button>
+                <button type="submit" className="btn btn-primary" disabled={creatingTask}>{creatingTask ? 'Creating...' : 'Create Task'}</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Add member modal */}
+      {showAddMember && (
+        <div className="modal-overlay" onClick={e => e.target===e.currentTarget && setShowAddMember(false)}>
+          <div className="modal" style={{maxWidth:380}}>
+            <div className="modal-header">
+              <div className="modal-title">Add Member</div>
+              <button className="modal-close" onClick={() => setShowAddMember(false)}>✕</button>
+            </div>
+            {addMemberError && <div className="error-msg">{addMemberError}</div>}
+            <form onSubmit={addMember}>
+              <div className="form-group">
+                <label className="form-label">Email Address</label>
+                <input className="form-input" type="email" placeholder="member@company.com"
+                  value={newMemberEmail} onChange={e => setNewMemberEmail(e.target.value)} required autoFocus/>
+                <div style={{fontSize:12,color:'var(--text3)',marginTop:6}}>User must be registered on TaskFlow</div>
+              </div>
+              <div className="modal-actions">
+                <button type="button" className="btn btn-ghost" onClick={() => setShowAddMember(false)}>Cancel</button>
+                <button type="submit" className="btn btn-primary">Add Member</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
