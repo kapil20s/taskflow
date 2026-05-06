@@ -14,20 +14,31 @@ const DEMO_NAME = 'TaskFlow Demo';
 async function ensureDemoUser() {
   const normalizedEmail = DEMO_EMAIL.toLowerCase().trim();
   const existing = await db.execute({
-    sql: 'SELECT id FROM users WHERE email = ?',
+    sql: 'SELECT id, password, name FROM users WHERE email = ?',
     args: [normalizedEmail],
   });
 
-  if (existing.rows.length > 0) {
+  const hashedPassword = await bcrypt.hash(DEMO_PASSWORD, 12);
+
+  if (existing.rows.length === 0) {
+    await db.execute({
+      sql: 'INSERT INTO users (id, name, email, password) VALUES (?, ?, ?, ?)',
+      args: [uuidv4(), DEMO_NAME, normalizedEmail, hashedPassword],
+    });
+    console.log(`[auth] demo user created: ${normalizedEmail}`);
     return;
   }
 
-  const hashedPassword = await bcrypt.hash(DEMO_PASSWORD, 12);
-  await db.execute({
-    sql: 'INSERT INTO users (id, name, email, password) VALUES (?, ?, ?, ?)',
-    args: [uuidv4(), DEMO_NAME, normalizedEmail, hashedPassword],
-  });
-  console.log(`[auth] demo user created: ${normalizedEmail}`);
+  const demoUser = existing.rows[0];
+  const hasExpectedPassword = await bcrypt.compare(DEMO_PASSWORD, demoUser.password);
+
+  if (!hasExpectedPassword || demoUser.name !== DEMO_NAME) {
+    await db.execute({
+      sql: 'UPDATE users SET name = ?, password = ? WHERE id = ?',
+      args: [DEMO_NAME, hashedPassword, demoUser.id],
+    });
+    console.log(`[auth] demo user password reset: ${normalizedEmail}`);
+  }
 }
 
 async function initDB() {
