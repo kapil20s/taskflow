@@ -1,6 +1,6 @@
-const express = require('express');
-const { db } = require('../db');
-const { authenticate } = require('../middleware/auth');
+import express from 'express';
+import { db } from '../db.js';
+import { authenticate } from '../middleware/auth.js';
 
 const router = express.Router();
 
@@ -90,4 +90,4 @@ router.get('/', authenticate, async (req, res) => {
   }
 });
 
-module.exports = router;
+export default router;
