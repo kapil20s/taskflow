@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useAuth } from './AuthContext';
+import { API_BASE } from './api';
 
 export default function LoginPage({ onNavigate }) {
   const { login } = useAuth();
@@ -14,9 +15,18 @@ export default function LoginPage({ onNavigate }) {
     try {
       await login(form.email, form.password);
     } catch (err) {
-      const msg = err.response?.data?.error || err.message || 'Login failed';
-      setError(msg);
       const status = err.response?.status;
+      let msg = 'Login failed';
+      if (!err.response) {
+        msg = `Cannot reach server (${API_BASE}). Check backend/CORS and API URL.`;
+      } else if (status === 401) {
+        msg = err.response?.data?.error || 'Wrong email or password.';
+      } else if (status >= 500) {
+        msg = 'Server error. Please try again in a moment.';
+      } else {
+        msg = err.response?.data?.error || err.message || 'Login failed';
+      }
+      setError(msg);
       if (!err.response) {
         console.error('Login failed: no response (network or CORS)', err);
       } else if (status >= 500) {

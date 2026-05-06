@@ -1,6 +1,15 @@
 import axios from 'axios';
 
-const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:3001/api';
+const trimmedEnvApiUrl = import.meta.env.VITE_API_URL?.trim();
+const trimmedReactStyleApiUrl =
+  typeof process !== 'undefined' ? process.env?.REACT_APP_API_URL?.trim() : '';
+
+const API_BASE =
+  trimmedEnvApiUrl ||
+  trimmedReactStyleApiUrl ||
+  (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
+    ? 'http://localhost:3001/api'
+    : '/api');
 
 const api = axios.create({ baseURL: API_BASE });
 
@@ -27,3 +36,4 @@ api.interceptors.response.use(
 );
 
 export default api;
+export { API_BASE };
