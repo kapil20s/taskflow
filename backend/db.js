@@ -1,5 +1,9 @@
-const { createClient } = require('@libsql/client');
-const path = require('path');
+import { createClient } from '@libsql/client';
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 const db = createClient({
   url: process.env.DATABASE_URL || `file:${path.join(__dirname, 'taskflow.db')}`,
@@ -54,4 +58,4 @@ async function initDB() {
   console.log('Database initialized');
 }
 
-module.exports = { db, initDB };
+export { db, initDB };

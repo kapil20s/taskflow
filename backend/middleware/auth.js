@@ -1,5 +1,5 @@
-const jwt = require('jsonwebtoken');
-const { db } = require('../db');
+import jwt from 'jsonwebtoken';
+import { db } from '../db.js';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'taskflow-super-secret-key-change-in-production';
 
@@ -56,4 +56,4 @@ async function requireProjectMember(req, res, next) {
   next();
 }
 
-module.exports = { generateToken, authenticate, requireProjectAdmin, requireProjectMember, JWT_SECRET };
+export { generateToken, authenticate, requireProjectAdmin, requireProjectMember, JWT_SECRET };

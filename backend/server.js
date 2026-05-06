@@ -1,12 +1,12 @@
-require('dotenv').config();
-const express = require('express');
-const cors = require('cors');
-const { initDB } = require('./db');
+import 'dotenv/config';
+import express from 'express';
+import cors from 'cors';
+import { initDB } from './db.js';
 
-const authRoutes = require('./routes/auth');
-const projectRoutes = require('./routes/projects');
-const taskRoutes = require('./routes/tasks');
-const dashboardRoutes = require('./routes/dashboard');
+import authRoutes from './routes/auth.js';
+import projectRoutes from './routes/projects.js';
+import taskRoutes from './routes/tasks.js';
+import dashboardRoutes from './routes/dashboard.js';
 
 const app = express();
 const PORT = process.env.PORT || 3001;
