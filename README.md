@@ -10,8 +10,8 @@ Manage projects, assign tasks, track progress, and collaborate with your team â€
 
 | Service | URL |
 |---------|-----|
-| Frontend | `https://taskflow-frontend.railway.app` |
-| Backend API | `https://taskflow-backend.railway.app/api/health` |
+| Live Application Url | https://task-flows-production.up.railway.app/ |
+
 
 ---
 
